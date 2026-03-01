@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/scrape",
+      "schedule": "0 7 * * 2,3,4,5,6,0"
+    },
+    {
+      "path": "/api/scrape",
+      "schedule": "0 17 * * 2,3,4,5,6,0"
+    }
+  ]
+}
