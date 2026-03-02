@@ -17,28 +17,20 @@ export async function POST(request) {
     return Response.json({
       success: true,
       timestamp: data.timestamp,
+      data: data,  // Send full scraped data to frontend
       summary: {
-        football: {
-          laliga: {
-            injuries: data.football.laliga?.injuries?.length || 0,
-            suspensions: data.football.laliga?.suspensions?.length || 0,
-            cardRisk: data.football.laliga?.cardRisk?.length || 0,
-          },
-          seriea: {
-            injuries: data.football.seriea?.injuries?.length || 0,
-            suspensions: data.football.seriea?.suspensions?.length || 0,
-            cardRisk: data.football.seriea?.cardRisk?.length || 0,
-          },
-          bundesliga: {
-            injuries: data.football.bundesliga?.injuries?.length || 0,
-            suspensions: data.football.bundesliga?.suspensions?.length || 0,
-            cardRisk: data.football.bundesliga?.cardRisk?.length || 0,
-          },
-        },
+        football: Object.fromEntries(
+          Object.entries(data.football || {}).map(([k, v]) => [k, {
+            injuries: v.injured?.length || 0,
+            suspensions: v.suspended?.length || 0,
+            total: v.totalCount || v.all?.length || 0,
+          }])
+        ),
         euroleague: {
-          injuries: data.basketball.euroleague?.injuries?.length || 0,
+          injuries: data.basketball?.euroleague?.injuries?.length || 0,
         },
       },
+      sources: data.sources || [],
       errors: data.errors,
     });
   } catch (error) {

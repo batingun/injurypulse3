@@ -172,20 +172,91 @@ export default function InjuryPulseApp() {
 
     try {
       const res = await fetch('/api/scrape', { method: 'POST' });
-      const data = await res.json();
+      const result = await res.json();
 
-      if (data.success) {
+      if (result.success && result.data) {
+        const liveData = result.data;
+        // Transform scraped data into app format
+        const updated = JSON.parse(JSON.stringify(DEMO_LEAGUES));
+
+        // For each football league, update player statuses from real data
+        for (const [leagueKey, leagueData] of Object.entries(liveData.football || {})) {
+          if (!updated[leagueKey]) continue;
+          const scrapedPlayers = leagueData.all || [];
+
+          updated[leagueKey].teams.forEach(team => {
+            team.stars.forEach(player => {
+              // Try to find this player in scraped data
+              const normalizedPlayerName = player.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+              const match = scrapedPlayers.find(sp => {
+                const normalizedScraped = sp.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+                // Match by last name or full name
+                return normalizedScraped.includes(normalizedPlayerName) ||
+                       normalizedPlayerName.includes(normalizedScraped) ||
+                       normalizedPlayerName.split(' ').some(part => part.length > 3 && normalizedScraped.includes(part)) ||
+                       normalizedScraped.split(' ').some(part => part.length > 3 && normalizedPlayerName.includes(part));
+              });
+
+              if (match) {
+                // Player found in injury/suspension list — update status
+                player.status = match.status;
+                player.injury = match.info || match.injury || null;
+                player.returnDate = match.returnDate || null;
+                if (match.status === 'suspended') {
+                  player.cards = match.reason === 'red_card' 
+                    ? { yellow: player.cards?.yellow || 0, red: 1 }
+                    : { yellow: player.cardLimit || 5, red: 0 };
+                }
+              } else {
+                // Player NOT in any injury/suspension list = FIT and available
+                player.status = 'fit';
+                player.injury = null;
+                player.returnDate = null;
+              }
+            });
+          });
+        }
+
+        // EuroLeague: update from basketball data
+        if (liveData.basketball?.euroleague?.injuries?.length > 0) {
+          const euroInjuries = liveData.basketball.euroleague.injuries;
+          updated.euroleague.teams.forEach(team => {
+            team.stars.forEach(player => {
+              const normalizedPlayerName = player.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+              const match = euroInjuries.find(sp => {
+                const ns = sp.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+                return ns.includes(normalizedPlayerName) || normalizedPlayerName.includes(ns) ||
+                       normalizedPlayerName.split(' ').some(p => p.length > 3 && ns.includes(p));
+              });
+              if (match) {
+                player.status = match.status || 'injured';
+                player.injury = match.injury || 'Undisclosed';
+              } else {
+                player.status = 'fit';
+                player.injury = null;
+                player.returnDate = null;
+              }
+            });
+          });
+        }
+
+        setLeagues(updated);
         setLastUpdated(new Date().toLocaleString('tr-TR'));
         setDataSource("live");
-        setRefreshResult(data.summary);
-
-        // TODO: Transform scraped data into leagues format
-        // For now, show success and keep demo data structure
-        // In production, the scraped data would be mapped to the same format
-
-        setTimeout(() => setRefreshResult(null), 8000);
+        setRefreshResult({
+          football: Object.fromEntries(
+            Object.entries(liveData.football || {}).map(([k, v]) => [k, {
+              injuries: v.injured?.length || 0,
+              suspensions: v.suspended?.length || 0,
+              total: v.totalCount || 0,
+            }])
+          ),
+          euroleague: { injuries: liveData.basketball?.euroleague?.injuries?.length || 0 },
+          sources: liveData.sources || [],
+        });
+        setTimeout(() => setRefreshResult(null), 10000);
       } else {
-        setRefreshError(data.error || 'Veri çekme başarısız');
+        setRefreshError(result.error || 'Veri çekme başarısız');
         setTimeout(() => setRefreshError(null), 6000);
       }
     } catch (err) {
